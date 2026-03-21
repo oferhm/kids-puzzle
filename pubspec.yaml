@@ -1,0 +1,39 @@
+name: kids_puzzle_app
+description: A kids jigsaw puzzle app for Android tablets.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio for sound effects & background music
+  audioplayers: ^5.2.1
+
+  # Lottie animations for celebrations (stars, confetti)
+  lottie: ^2.7.0
+
+  # Save progress / level completion
+  shared_preferences: ^2.2.2
+
+  # Responsive sizing for tablets & phones
+  flutter_screenutil: ^5.9.0
+
+  # Smooth page transitions
+  go_router: ^13.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/       # Puzzle images (use 2560x1600 px masters)
+    - assets/sounds/       # SFX: piece_snap.mp3, win_fanfare.mp3
+    - assets/animations/   # Lottie JSON files for celebrations
