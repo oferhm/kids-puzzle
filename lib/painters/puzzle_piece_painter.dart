@@ -182,13 +182,16 @@ class PuzzlePiecePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final path = _buildJigsawPath();
 
-    // Drop shadow when dragging
-    if (piece.isDragging) {
+    // Shadow — shown on any active touch (isActive), stronger when dragging
+    if (piece.isActive || piece.isDragging) {
+      final shadowBlur   = piece.isDragging ? 22.0 : 14.0;
+      final shadowOffset = piece.isDragging ? const Offset(6, 8) : const Offset(3, 4);
+      final shadowOpacity = piece.isDragging ? 0.55 : 0.38;
       canvas.drawPath(
-        path.shift(const Offset(5, 5)),
+        path.shift(shadowOffset),
         Paint()
-          ..color = Colors.black.withOpacity(0.35)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+          ..color = Colors.black.withOpacity(shadowOpacity)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, shadowBlur),
       );
     }
 
@@ -251,6 +254,7 @@ class PuzzlePiecePainter extends CustomPainter {
   @override
   bool shouldRepaint(PuzzlePiecePainter old) =>
       old.piece.isDragging != piece.isDragging ||
-      old.piece.isPlaced != piece.isPlaced ||
+      old.piece.isActive   != piece.isActive   ||
+      old.piece.isPlaced   != piece.isPlaced   ||
       old.piece.currentPosition != piece.currentPosition;
 }

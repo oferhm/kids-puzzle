@@ -15,6 +15,7 @@ class PuzzlePiece {
   Offset correctPosition;
   bool isPlaced;
   bool isDragging;
+  bool isActive; // true while finger/mouse is down on this piece
 
   PuzzlePiece({
     required this.id,
@@ -25,8 +26,9 @@ class PuzzlePiece {
     required this.sourceImage,
     required this.currentPosition,
     required this.correctPosition,
-    this.isPlaced = false,
+    this.isPlaced   = false,
     this.isDragging = false,
+    this.isActive   = false,
   });
 
   /// Width of each piece as fraction of total image

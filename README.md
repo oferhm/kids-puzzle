@@ -25,6 +25,7 @@ flutter pub get
 2. run the app
 flutter run
 
+on dev:
 flutter run -d chrome --verbose
 
 create web support
