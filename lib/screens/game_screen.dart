@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../screens/gallery_screen.dart' show AppBackButton;
 import '../widgets/panda_widget.dart';
 import '../widgets/puzzle_board.dart';
 
@@ -22,6 +23,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen>
     with SingleTickerProviderStateMixin {
+
   ui.Image? _image;
   bool      _loading  = true;
   String?   _error;
@@ -30,7 +32,6 @@ class _GameScreenState extends State<GameScreen>
   @override
   void initState() {
     super.initState();
-    // Start with 0% visible, then load
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadImage());
   }
 
@@ -43,7 +44,7 @@ class _GameScreenState extends State<GameScreen>
   Future<void> _loadImage() async {
     try {
       await _setProgress(0.05, delayMs: 80);
-      await _setProgress(0.15, delayMs: 200); // visible pause at start
+      await _setProgress(0.15, delayMs: 200);
 
       final data = await rootBundle.load(widget.imageAssetPath);
       await _setProgress(0.40, delayMs: 150);
@@ -60,7 +61,7 @@ class _GameScreenState extends State<GameScreen>
 
       final frame = await codec.getNextFrame();
       await _setProgress(0.90, delayMs: 120);
-      await _setProgress(1.00, delayMs: 400); // hold at 100% so user sees it
+      await _setProgress(1.00, delayMs: 400);
 
       if (mounted) setState(() { _image = frame.image; _loading = false; });
     } catch (e) {
@@ -83,11 +84,19 @@ class _GameScreenState extends State<GameScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFFFD6E0),
       body: SafeArea(
-        child: PuzzleBoard(
-          image: _image!,
-          rows:  widget.rows,
-          cols:  widget.cols,
-          onPuzzleSolved: () => debugPrint('🎉 Puzzle solved!'),
+        child: Stack(
+          children: [
+            PuzzleBoard(
+              image: _image!,
+              rows:  widget.rows,
+              cols:  widget.cols,
+              onPuzzleSolved: () => debugPrint('🎉 Puzzle solved!'),
+            ),
+            Positioned(
+              top: 12, left: 12,
+              child: AppBackButton(),
+            ),
+          ],
         ),
       ),
     );
@@ -108,11 +117,10 @@ class _GameScreenState extends State<GameScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Small panda doing idle animation
                   SizedBox(
                     width:  pandaSz,
                     height: pandaSz,
-                    child: const PandaWidget(size: pandaSz),
+                    child:  PandaWidget(size: pandaSz),
                   ),
                   const SizedBox(width: 20),
                   SizedBox(
@@ -131,7 +139,6 @@ class _GameScreenState extends State<GameScreen>
                           ),
                         ),
                         const SizedBox(height: 10),
-                        // Animated progress bar
                         TweenAnimationBuilder<double>(
                           tween:    Tween(begin: 0.0, end: _progress),
                           duration: const Duration(milliseconds: 250),
@@ -146,7 +153,7 @@ class _GameScreenState extends State<GameScreen>
                                     child: LinearProgressIndicator(
                                       value:           value,
                                       backgroundColor: Colors.white54,
-                                      valueColor:      const AlwaysStoppedAnimation(
+                                      valueColor: const AlwaysStoppedAnimation(
                                         Color(0xFFFF6B9D),
                                       ),
                                     ),
@@ -173,6 +180,40 @@ class _GameScreenState extends State<GameScreen>
             ],
           );
         }),
+      ),
+    );
+  }
+}
+
+// ── Green back button ─────────────────────────────────────────────────────────
+
+class _GreenBackButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _GreenBackButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width:  44,
+        height: 44,
+        decoration: BoxDecoration(
+          color:  const Color(0xFF4CAF50),
+          shape:  BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color:      Colors.green.withOpacity(0.4),
+              blurRadius: 8,
+              offset:     const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: Colors.white,
+          size:  20,
+        ),
       ),
     );
   }

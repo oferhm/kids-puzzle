@@ -34,6 +34,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/       # Puzzle images (use 2560x1600 px masters)
-    - assets/sounds/       # SFX: piece_snap.mp3, win_fanfare.mp3
-    - assets/animations/   # Lottie JSON files for celebrations
+    - assets/images/
+    - assets/images/themes/animals/
+    - assets/images/themes/sea_fishes/
+    - assets/images/themes/princesses/
+    - assets/images/themes/butterflies/
