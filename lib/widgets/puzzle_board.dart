@@ -2,9 +2,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../models/puzzle_piece.dart';
+import '../painters/confetti_painter.dart';
+import '../painters/particle_burst_painter.dart';
 import '../painters/puzzle_piece_painter.dart';
 import '../painters/puzzle_template_painter.dart';
 import '../utils/image_slicer.dart';
+import 'panda_widget.dart';
 
 class PuzzleBoard extends StatefulWidget {
   final ui.Image image;
@@ -34,6 +37,19 @@ class _PuzzleBoardState extends State<PuzzleBoard>
   final Map<int, AnimationController> _scaleControllers = {};
   final Map<int, Animation<double>>   _scaleAnimations  = {};
 
+  // Active particle bursts: pieceId → {controller, center}
+  final Map<int, AnimationController> _burstControllers = {};
+  final Map<int, Offset>              _burstCenters     = {};
+
+  // Confetti rain on solve
+  late AnimationController        _confettiCtrl;
+  late List<ConfettiParticle>     _confettiParticles;
+  double _lastConfettiTime = 0;
+  bool   _confettiActive   = false;
+
+  // Panda mascot key — used to trigger dance
+  final _pandaKey = GlobalKey<PandaWidgetState>();
+
   // Single dragged piece — tracked by raw pointer events on the Stack
   PuzzlePiece? _draggedPiece;
   Offset        _lastPointerPos = Offset.zero;
@@ -45,7 +61,7 @@ class _PuzzleBoardState extends State<PuzzleBoard>
   late double _leftBoundary;
 
   static const double _leftFraction  = 0.65;
-  static const double _templateScale = 0.80;
+  static const double _templateScale = 0.70;
   static const double _tabDepth      = 0.22;
   static const double _trayScale     = 0.60;
 
@@ -57,6 +73,22 @@ class _PuzzleBoardState extends State<PuzzleBoard>
     _solvedController = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 700),
     );
+    _confettiParticles = ConfettiPainter.createParticles(count: 300);
+    _confettiCtrl = AnimationController(
+      vsync: this, duration: const Duration(seconds: 12),
+    );
+    _confettiCtrl.addListener(() {
+      final t = _confettiCtrl.lastElapsedDuration?.inMilliseconds ?? 0;
+      final dt = (t - _lastConfettiTime) / 1000.0;
+      _lastConfettiTime = t.toDouble();
+      ConfettiPainter.update(_confettiParticles, dt);
+      setState(() {});
+    });
+    _confettiCtrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed) {
+        setState(() => _confettiActive = false);
+      }
+    });
   }
 
   @override
@@ -74,9 +106,15 @@ class _PuzzleBoardState extends State<PuzzleBoard>
 
     final tmplW = leftW * _templateScale;
     final tmplH = leftH * _templateScale;
-    _templateRect = Rect.fromLTWH(
-      (leftW - tmplW) / 2, (leftH - tmplH) / 2, tmplW, tmplH,
-    );
+
+    // Push template to the right — panda gets the left margin space.
+    // pandaSpace = 15% of leftW reserved for the panda on the left.
+    final pandaSpace = leftW * 0.15;
+    final availW     = leftW - pandaSpace;
+    final tmplLeft   = pandaSpace + (availW - tmplW) / 2;
+    final tmplTop    = (leftH - tmplH) / 2;
+
+    _templateRect = Rect.fromLTWH(tmplLeft, tmplTop, tmplW, tmplH);
     _baseW      = tmplW / widget.cols;
     _baseH      = tmplH / widget.rows;
     _tabPadding = (_baseW * _tabDepth).clamp(_baseH * _tabDepth, double.infinity) + 10.0;
@@ -109,7 +147,9 @@ class _PuzzleBoardState extends State<PuzzleBoard>
   @override
   void dispose() {
     _solvedController.dispose();
+    _confettiCtrl.dispose();
     for (final c in _scaleControllers.values) { c.dispose(); }
+    for (final c in _burstControllers.values)  { c.dispose(); }
     super.dispose();
   }
 
@@ -211,6 +251,7 @@ class _PuzzleBoardState extends State<PuzzleBoard>
         piece.currentPosition = piece.correctPosition;
         piece.isPlaced        = true;
         _scaleControllers[piece.id]?.forward();
+        _triggerBurst(piece);
       } else {
         _updateScale(piece);
       }
@@ -218,10 +259,38 @@ class _PuzzleBoardState extends State<PuzzleBoard>
     });
   }
 
+  void _triggerBurst(PuzzlePiece piece) {
+    // Centre of the snapped piece on screen
+    final center = piece.correctPosition + Offset(_baseW / 2, _baseH / 2);
+
+    // Dispose any previous burst for this piece
+    _burstControllers[piece.id]?.dispose();
+
+    final ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _burstControllers[piece.id] = ctrl;
+    _burstCenters[piece.id]     = center;
+
+    ctrl.addListener(() => setState(() {}));
+    ctrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed) {
+        _burstControllers.remove(piece.id)?.dispose();
+        _burstCenters.remove(piece.id);
+        setState(() {});
+      }
+    });
+    ctrl.forward(from: 0);
+  }
+
   void _checkSolved() {
     if (_pieces.every((p) => p.isPlaced)) {
       _solved = true;
-      _solvedController.forward(from: 0);
+      _pandaKey.currentState?.triggerDance();
+      _lastConfettiTime = 0;
+      _confettiActive   = true;
+      _confettiCtrl.forward(from: 0);
       widget.onPuzzleSolved?.call();
     }
   }
@@ -239,13 +308,15 @@ class _PuzzleBoardState extends State<PuzzleBoard>
       onPointerUp:     _onPointerUp,
       onPointerCancel: _onPointerCancel,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           _buildLeftPanel(leftW, screen.height),
           _buildRightPanel(leftW, screen.width, screen.height),
           _buildTemplate(),
-          // Pieces in _pieces order — last = topmost (dragged piece moved to end)
           ..._pieces.map(_buildPiece),
-          if (_solved) _buildSolvedOverlay(),
+          _buildPanda(),
+          ..._burstControllers.entries.map((e) => _buildBurst(e.key)),
+          if (_confettiActive) _buildConfetti(),
         ],
       ),
     );
@@ -334,33 +405,69 @@ class _PuzzleBoardState extends State<PuzzleBoard>
     );
   }
 
-  // ── Solved overlay ───────────────────────────────────────────────────────
+  // ── Panda mascot ─────────────────────────────────────────────────────────
 
-  Widget _buildSolvedOverlay() => AnimatedBuilder(
-    animation: _solvedController,
-    builder: (context, _) => Opacity(
-      opacity: _solvedController.value,
-      child: Center(child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF56AB2F), Color(0xFFA8E063)]),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(
-            color: Colors.green.withOpacity(0.45), blurRadius: 24, spreadRadius: 4,
-          )],
+  Widget _buildPanda() {
+    final leftMargin = _templateRect.left;
+    final pandaSize  = _baseH; // 1 piece height
+
+    // Centre horizontally in left margin, vertically centred on template
+    final pandaLeft = (leftMargin - pandaSize) / 2;
+    final pandaTop  = _templateRect.top +
+        (_templateRect.height - pandaSize * 1.15) / 2;
+
+    return Positioned(
+      left:   pandaLeft,
+      top:    pandaTop,
+      width:  pandaSize,
+      height: pandaSize * 1.15,
+      child: PandaWidget(
+        key:  _pandaKey,
+        size: pandaSize,
+      ),
+    );
+  }
+
+  // ── Particle burst overlay ───────────────────────────────────────────────
+
+  Widget _buildBurst(int pieceId) {
+    final ctrl   = _burstControllers[pieceId];
+    final center = _burstCenters[pieceId];
+    if (ctrl == null || center == null) return const SizedBox.shrink();
+
+    final burstRadius = _baseW * 1.4;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: ParticleBurstPainter.create(
+            progress: ctrl.value,
+            center:   center,
+            radius:   burstRadius,
+            count:    30,
+            seed:     pieceId,
+          ),
         ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('🎉', style: TextStyle(fontSize: 52)),
-            SizedBox(height: 10),
-            Text('Puzzle Solved!', style: TextStyle(
-              color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold,
-              shadows: [Shadow(blurRadius: 4, color: Colors.black26)],
-            )),
-          ],
+      ),
+    );
+  }
+
+  // ── Confetti rain ────────────────────────────────────────────────────────
+
+  Widget _buildConfetti() {
+    // Fade out in last 2 seconds of the 8s animation
+    final t        = _confettiCtrl.value;
+    final opacity  = t < 0.85 ? 1.0 : 1.0 - ((t - 0.85) / 0.15);
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: ConfettiPainter(
+            particles: _confettiParticles,
+            opacity:   opacity,
+          ),
         ),
-      )),
-    ),
-  );
+      ),
+    );
+  }
 }
